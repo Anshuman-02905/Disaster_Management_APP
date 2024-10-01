@@ -1,0 +1,192 @@
+import pickle
+from sklearn.feature_extraction.text import TfidfVectorizer
+from tensorflow.keras.models import load_model  # Use tensorflow.keras for compatibility
+from pymongo import MongoClient
+from PIL import Image
+import numpy as np
+from bson import ObjectId
+import gridfs
+from io import BytesIO
+import json
+from config import Config
+from datetime import datetime
+
+
+
+class PostData:
+    def __init__(self, post_id='', text='', images=None, nlp_prediction=None, image_prediction=None, date=None):
+        self.post_id = post_id
+        self.text = text
+        self.images = images if images is not None else []
+        self.nlp_prediction = nlp_prediction
+        self.image_prediction = image_prediction
+        self.date = date if date is not None else datetime.utcnow()  # Set the current date by default
+
+    def to_dict(self):
+        return {
+            "post_id": self.post_id,
+            "text": self.text,
+            "images": self.images,
+            "nlp_prediction": self.nlp_prediction,
+            "image_prediction": self.image_prediction,
+            "date": self.date
+        }
+
+class Predictor:
+    def __init__(self):
+        # Load the NLP model and vectorizer
+        self.nlp_model = self.load_nlp_model(Config.NLP_MODEL_PATH)
+        self.nlp_vectorizer = self.load_vectorizer(Config.NLP_VECTORIZER_PATH)
+        self.classes = Config.CLASSES
+        
+        # Load the image classification model
+        self.image_model = self.load_image_model(Config.IMAGE_MODEL_PATH)
+        
+        # MongoDB setup
+        self.client = MongoClient(Config.MONGO_URI)
+        self.db = self.client[Config.DB_NAME]
+        self.collection = self.db[Config.COLLECTION_NAME]
+        self.fs = gridfs.GridFS(self.db)   # GridFS for image retrieval
+        self.Predictions = self.db[Config.PREDICTIONS_NAME]
+
+
+    def load_nlp_model(self, model_path):
+        with open(model_path, 'rb') as model_file:
+            return pickle.load(model_file)
+
+    def load_vectorizer(self, vectorizer_path):
+        with open(vectorizer_path, 'rb') as vec_file:
+            return pickle.load(vec_file)
+
+    def load_image_model(self, model_path):
+        return load_model(model_path)
+
+    def retrieve_posts_from_mongo(self):
+        # Retrieve all posts from MongoDB
+        posts = list(self.collection.find())
+        return [PostData(post_id=str(post['_id']), text=post['text'], images=post.get('images', [])) for post in posts]
+
+    def fetch_image_by_id(self, image_id):
+        try:
+            # Fetch the image binary data from GridFS
+            grid_out = self.fs.get(image_id)
+            image_data = grid_out.read()
+            
+            # Convert binary to an image (PIL)
+            img = Image.open(BytesIO(image_data))
+            return img
+        except Exception as e:
+            print(f"Error fetching image with ID {image_id}: {e}")
+            return None
+
+    def preprocess_image(self, img):
+        try:
+            # Assuming your model expects 150x150 pixel images; adjust based on your model's input size
+            img = img.resize((150, 150))
+            img = np.array(img) / 255.0  # Normalize the image
+            if img.shape[-1] == 4:  # If image has alpha channel, convert to 3 channels (RGB)
+                img = img[..., :3]
+            if img.shape != (150, 150, 3):
+                print(f"Skipping image due to incorrect shape: {img.shape}")
+                return None
+            return np.expand_dims(img, axis=0)  # Add batch dimension
+        except Exception as e:
+            print(f"Error processing image: {e}")
+            return None
+
+    def predict_image(self, image_ids):
+        try:
+            image_predictions = []
+            for image_id in image_ids:
+                img = self.fetch_image_by_id(image_id)
+                if img is not None:
+                    preprocessed_img = self.preprocess_image(img)
+                    if preprocessed_img is not None:
+                        # Get the prediction as a NumPy array
+                        pred = self.image_model.predict(preprocessed_img).tolist()[0]  # Convert to list
+                        
+                        # Get the predicted class (index of the highest probability)
+                        predicted_class_index = int(np.argmax(pred))  # Convert to int
+                        
+                        # Get the class label from the classes dictionary
+                        predicted_class_label = self.classes.get(predicted_class_index, "UNKNOWN")
+                        
+                        image_predictions.append({
+                            "probabilities": [float(prob) for prob in pred],  # Convert probabilities to float
+                            "predicted_class_index": predicted_class_index,
+                            "predicted_class_label": predicted_class_label  # Add the label
+                        })
+                    else:
+                        image_predictions.append({
+                            "probabilities": [-1.0],  # Use float for consistency
+                            "predicted_class_index": -1,
+                            "predicted_class_label": "NONE"  # Assign label for no image case
+                        })
+                else:
+                    image_predictions.append({
+                        "probabilities": [-1.0],  # Use float for consistency
+                        "predicted_class_index": -1,
+                        "predicted_class_label": "NONE"  # Assign label for missing image case
+                    })
+            return image_predictions
+        except Exception as e:
+            print(str(e))
+            return []
+        
+
+    def predict_nlp(self, new_texts):
+        new_text_tfidf = self.nlp_vectorizer.transform(new_texts)
+        predictions = list(self.nlp_model.predict(new_text_tfidf))
+        return predictions
+
+    def run_predictions_on_scraped_data(self):
+        # Retrieve posts from MongoDB
+        posts = self.retrieve_posts_from_mongo()
+
+        # Process each post individually
+        for post in posts:
+            # Make NLP prediction
+            nlp_prediction = int(self.predict_nlp([post.text])[0])  # Assuming the model outputs an array
+
+            # Make image prediction (if there are images)
+            image_prediction = None
+            if post.images:  # Assuming images contains ObjectId(s) of the images in MongoDB
+                image_ids = [image_id for image_id in post.images]
+                image_prediction = self.predict_image(image_ids)
+
+            # Update post with predictions
+            post.nlp_prediction = nlp_prediction
+            post.image_prediction = image_prediction if image_prediction else "No Image"
+
+        return [post.to_dict() for post in posts]
+    def upload_to_DB(self,predictions):
+
+        for prediction in predictions:
+            # Convert `post_id` to ObjectId
+            prediction['post_id'] = ObjectId(prediction['post_id'])
+            
+            # Convert each image id to ObjectId
+            prediction['images'] = [ObjectId(image_id) for image_id in prediction['images']]
+            
+            # Add current date if not present
+            if 'date' not in prediction:
+                prediction['date'] = datetime.utcnow()
+
+            # Insert the prediction into MongoDB
+            for key, val in prediction.items():
+                print(f"Key: {key}, Value: {val}, Val Type: {type(val)}")
+            self.Predictions.insert_one(prediction)
+
+def main():
+    try:
+        predictor = Predictor()
+        predictions = predictor.run_predictions_on_scraped_data()
+        predictor.upload_to_DB(predictions)
+    except Exception as e:
+        print(str(e))
+
+if __name__ == "__main__":
+    main()
+
+
+    

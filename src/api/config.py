@@ -1,5 +1,6 @@
 
 import os
+import datetime
 
 class Config:
     # MongoDB configuration
@@ -16,3 +17,26 @@ class Config:
     # Chrome WebDriver configuration
     CHROME_USER_DATA_DIR = r"user-data-dir=C:\Users\Asus\AppData\Local\Google\Chrome\User Data"
     CHROME_PROFILE_DIRECTORY = "Default"
+
+      # Model paths
+    NLP_MODEL_PATH = r'E:\Projects\DisasterClassification\src\models\TextClassification.pkl'
+    NLP_VECTORIZER_PATH = r'E:\Projects\DisasterClassification\src\models\TextClasssification_vectorizer.pkl'
+    IMAGE_MODEL_PATH = r'E:\Projects\DisasterClassification\src\models\ImageClassification.keras'
+
+    # MongoDB configurations
+    MONGO_URI = 'mongodb://localhost:27017/'
+    DB_NAME = 'Twitter'
+    COLLECTION_NAME = 'Posts'
+    PREDICTIONS_NAME='Predictions'
+
+    # Image classification classes
+    CLASSES = {
+        -1: "NONE",
+        0: 'Damaged_Infrastructure',
+        1: 'Fire_Disaster',
+        2: 'Human_Damage',
+        3: 'Land_Disaster',
+        4: 'Non_Damage',
+        5: 'Water_Disaster'
+    }
+

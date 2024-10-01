@@ -10,6 +10,7 @@ import gridfs
 import os
 import requests
 from config import Config
+from datetime import datetime
 
 
 class TwitterScraper:
@@ -116,7 +117,7 @@ class TwitterScraper:
             return 
 
 class TwitterPostCleaner:
-    def __init__(self, base_path):
+    def __init__(self):
         self.base_path = Config.OUTPUT_PATH
         # List of valid image extensions
         self.valid_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff']
@@ -164,21 +165,23 @@ class TwitterPostCleaner:
                     # Check if the image is valid and large enough
                     self.is_valid_image(file_path)
 class PostData:
-    def __init__(self, post_id='', text='', images=None):
+    def __init__(self, post_id='', text='', images=None, date=None):
         self.post_id = post_id  # ID extracted from the second line
         self.text = text
         self.images = images if images is not None else []
+        self.date = date if date is not None else datetime.utcnow()  # Set to current date by default (UTC)
 
     def to_dict(self):
         return {
             "post_id": self.post_id,
             "text": self.text,
-            "images": self.images
+            "images": self.images,
+            "date": self.date  # Include the date in the dictionary representation
         }
 
 class PostUploader:
-    def __init__(self, root_folder):
-        self.root_folder = root_folder  # e.g., 'E:/Projects/DisasterClassification/src/temp'
+    def __init__(self):
+        self.root_folder = Config.OUTPUT_PATH  # e.g., 'E:/Projects/DisasterClassification/src/temp'
         self.client = MongoClient(Config.MONGO_URI)
         self.db = self.client[Config.DB_NAME]
         self.collection = self.db[Config.COLLECTION_NAME]
@@ -228,4 +231,5 @@ class PostUploader:
             self.collection.insert_one(post.to_dict())
             print(f"Uploaded post ID: {post.post_id} - Text: {post.text[:30]}... with {len(post.images)} images.")
 
+    
 
