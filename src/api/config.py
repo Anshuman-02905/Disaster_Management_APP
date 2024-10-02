@@ -26,7 +26,6 @@ class Config:
     # MongoDB configurations
     MONGO_URI = 'mongodb://localhost:27017/'
     DB_NAME = 'Twitter'
-    COLLECTION_NAME = 'Posts'
     PREDICTIONS_NAME='Predictions'
 
     # Image classification classes

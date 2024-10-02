@@ -1,5 +1,6 @@
 import pickle
 from sklearn.feature_extraction.text import TfidfVectorizer
+from flask import jsonify
 from tensorflow.keras.models import load_model  # Use tensorflow.keras for compatibility
 from pymongo import MongoClient
 from PIL import Image
@@ -10,6 +11,7 @@ from io import BytesIO
 import json
 from config import Config
 from datetime import datetime
+import os
 
 
 
@@ -47,7 +49,7 @@ class Predictor:
         self.db = self.client[Config.DB_NAME]
         self.collection = self.db[Config.COLLECTION_NAME]
         self.fs = gridfs.GridFS(self.db)   # GridFS for image retrieval
-        self.Predictions = self.db[Config.PREDICTIONS_NAME]
+        self.prediction = self.db[Config.PREDICTIONS_NAME]
 
 
     def load_nlp_model(self, model_path):
@@ -64,7 +66,7 @@ class Predictor:
     def retrieve_posts_from_mongo(self):
         # Retrieve all posts from MongoDB
         posts = list(self.collection.find())
-        return [PostData(post_id=str(post['_id']), text=post['text'], images=post.get('images', [])) for post in posts]
+        return [PostData(post_id=str(post['post_id']), text=post['text'], images=post.get('images', [])) for post in posts]
 
     def fetch_image_by_id(self, image_id):
         try:
@@ -159,11 +161,11 @@ class Predictor:
             post.image_prediction = image_prediction if image_prediction else "No Image"
 
         return [post.to_dict() for post in posts]
+    
     def upload_to_DB(self,predictions):
 
         for prediction in predictions:
-            # Convert `post_id` to ObjectId
-            prediction['post_id'] = ObjectId(prediction['post_id'])
+            prediction['post_id'] = prediction['post_id']
             
             # Convert each image id to ObjectId
             prediction['images'] = [ObjectId(image_id) for image_id in prediction['images']]
@@ -175,13 +177,66 @@ class Predictor:
             # Insert the prediction into MongoDB
             for key, val in prediction.items():
                 print(f"Key: {key}, Value: {val}, Val Type: {type(val)}")
-            self.Predictions.insert_one(prediction)
+                
+            self.prediction.insert_one(prediction)
+
+class Downloaded:
+    def __init__(self):
+        # MongoDB setup
+        self.client = MongoClient(Config.MONGO_URI)
+        self.db = self.client[Config.DB_NAME]
+        self.collection = self.db[Config.PREDICTIONS_NAME]
+        self.fs = gridfs.GridFS(self.db)  # GridFS for image retrieval
+
+    def fetch_posts_with_nlp_prediction(self, prediction_value=1):
+
+        try:
+            # Querying the collection for posts where 'nlp_prediction' equals the given value
+            query = {"nlp_prediction": prediction_value}
+            
+            posts = self.collection.find(filter=query)
+            
+            # Convert the posts to a list of dictionaries
+            result = [post for post in posts]
+            result=self.convert_toJasonify(result)
+            return result
+    
+
+        except Exception as e:
+            print(f"Error fetching posts with nlp_prediction = {prediction_value}: {str(e)}")
+            return []
+        
+    def convert_toJasonify(self, posts):
+        for post in posts:
+            # Convert '_id' to string
+            if isinstance(post.get('_id'), ObjectId):
+                post['_id'] = str(post['_id'])
+
+            # Convert 'post_id' to string if it's an ObjectId
+            if isinstance(post.get('post_id'), ObjectId):
+                post['post_id'] = str(post['post_id'])
+
+            # Convert 'images' list from ObjectId to string
+            if 'images' in post:
+                post['images'] = [str(image_id) if isinstance(image_id, ObjectId) else image_id for image_id in post['images']]
+                
+            if isinstance(post.get('date'), datetime):
+                post['date'] = post['date'].strftime('%Y-%m-%d %H:%M:%S')
+                
+            
+        
+        return posts
+
+        
 
 def main():
     try:
-        predictor = Predictor()
-        predictions = predictor.run_predictions_on_scraped_data()
-        predictor.upload_to_DB(predictions)
+        Downloader = Downloaded()
+        predictions = Downloader.fetch_posts_with_nlp_prediction()
+        json_file_path = os.path.join('E:\\Projects\\DisasterClassification\\src', 'predictions.json')  # Adjust path as needed
+        with open(json_file_path, 'w') as json_file:
+            json.dump(predictions, json_file, indent=4)
+        
     except Exception as e:
         print(str(e))
 
