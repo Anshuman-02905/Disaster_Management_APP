@@ -268,19 +268,5 @@ class Downloaded:
 
         
 
-def main():
-    try:
-        Downloader = Downloaded()
-        predictions = Downloader.fetch_posts_with_nlp_prediction()
-        json_file_path = os.path.join('E:\\Projects\\DisasterClassification\\src', 'predictions.json')  # Adjust path as needed
-        with open(json_file_path, 'w') as json_file:
-            json.dump(predictions, json_file, indent=4)
-        
-    except Exception as e:
-        print(str(e))
-
-if __name__ == "__main__":
-    main()
-
 
     

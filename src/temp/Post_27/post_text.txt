@@ -1,7 +1,0 @@
-USGS HDDS
-@USGS_HDDS
-·
-2h
-5 scenes of LANDSAT ingested to HDDS for event 202409_Flood_MAR #MoroccoFlood #Flood https://hddsexplorer.usgs.gov/criteria?event=202409_Flood_MAR&ordered=202409_Flood_MAR_USGS_LANDSAT8_2024-10-01,202409_Flood_MAR_USGS_LANDSAT9_2024-10-01&field=batch_name…
-1
-20
