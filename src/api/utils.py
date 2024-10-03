@@ -11,6 +11,7 @@ import os
 import requests
 from config import Config
 from datetime import datetime
+import shutil
 
 
 class TwitterScraper:
@@ -24,9 +25,8 @@ class TwitterScraper:
         # Set up Chrome options
         self.chrome_options = Options()
         #self.chrome_options.add_argument(Config.CHROME_USER_DATA_DIR)
-        self.chrome_options.add_argument( r"user-data-dir=C:\Users\Asus\AppData\Local\Google\Chrome\User Data")
-        #self.chrome_options.add_argument(f"profile-directory={Config.CHROME_PROFILE_DIRECTORY}")
-        self.chrome_options.add_argument(f"profile-directory=Default")
+        self.chrome_options.add_argument(rf"user-data-dir={Config.CHROME_USER_DATA_DIR}")
+        self.chrome_options.add_argument(f"profile-directory={Config.CHROME_PROFILE_DIRECTORY}")
 
         # Set up the Chrome WebDriver using the WebDriver Manager
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=self.chrome_options)
@@ -165,18 +165,20 @@ class TwitterPostCleaner:
                     # Check if the image is valid and large enough
                     self.is_valid_image(file_path)
 class PostData:
-    def __init__(self, post_id='', text='', images=None, date=None):
+    def __init__(self, post_id='', text='', images=None, date=None,uploadstamp=None):
         self.post_id = post_id  # ID extracted from the second line
         self.text = text
         self.images = images if images is not None else []
         self.date = date if date is not None else datetime.utcnow()  # Set to current date by default (UTC)
+        self.uploadstamp = uploadstamp
 
     def to_dict(self):
         return {
             "post_id": self.post_id,
             "text": self.text,
             "images": self.images,
-            "date": self.date  # Include the date in the dictionary representation
+            "date": self.date,  # Include the date in the dictionary representation
+            "upload_stamp":self.uploadstamp
         }
 
 class PostUploader:
@@ -186,10 +188,11 @@ class PostUploader:
         self.db = self.client[Config.DB_NAME]
         self.collection = self.db[Config.COLLECTION_NAME]
         self.fs = gridfs.GridFS(self.db)  # To store images in MongoDB using GridFS if needed
+        self.uploadstamp = int(datetime.utcnow().timestamp()) 
 
     def create_post_object(self, post_folder):
         # Initialize a PostData object
-        post_data = PostData()
+        post_data = PostData(uploadstamp=self.uploadstamp)
 
         # Traverse through the post folder for text and images
         for file in os.listdir(post_folder):
@@ -209,6 +212,14 @@ class PostUploader:
                     post_data.images.append(image_id)  # Append the image ID to the list
 
         return post_data
+    def empty_folder(self):
+        # Check if the directory exists
+        if os.path.exists(self.root_folder):
+            # Remove the entire folder
+            shutil.rmtree(self.root_folder)
+            # Recreate the folder
+            os.makedirs(self.root_folder)
+            print(f"Emptied and recreated the folder: {self.root_folder}")
 
     def process_posts(self):
         posts = []
@@ -219,6 +230,8 @@ class PostUploader:
             if os.path.isdir(full_path):
                 post_data = self.create_post_object(full_path)
                 posts.append(post_data)
+                
+        self.empty_folder()
 
         return posts
 
@@ -230,6 +243,7 @@ class PostUploader:
         for post in posts:
             self.collection.insert_one(post.to_dict())
             print(f"Uploaded post ID: {post.post_id} - Text: {post.text[:30]}... with {len(post.images)} images.")
+        return self.uploadstamp
 
     
 

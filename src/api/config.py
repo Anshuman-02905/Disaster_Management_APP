@@ -15,7 +15,7 @@ class Config:
 
 
     # Chrome WebDriver configuration
-    CHROME_USER_DATA_DIR = r"user-data-dir=C:\Users\Asus\AppData\Local\Google\Chrome\User Data"
+    CHROME_USER_DATA_DIR = r"C:\Users\Asus\AppData\Local\Google\Chrome\User Data"
     CHROME_PROFILE_DIRECTORY = "Default"
 
       # Model paths
@@ -28,6 +28,9 @@ class Config:
     DB_NAME = 'Twitter'
     PREDICTIONS_NAME='Predictions'
 
+    #Image extensions
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
     # Image classification classes
     CLASSES = {
         -1: "NONE",
@@ -38,4 +41,7 @@ class Config:
         4: 'Non_Damage',
         5: 'Water_Disaster'
     }
+    #Text Classification  classes
+    NLP_DICT = {0: "Not Disaster", 1: "Disaster"}
+    
 

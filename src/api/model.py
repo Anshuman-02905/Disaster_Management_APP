@@ -12,17 +12,23 @@ import json
 from config import Config
 from datetime import datetime
 import os
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
+import nltk
+from nltk.corpus import stopwords
+import re
 
 
 
 class PostData:
-    def __init__(self, post_id='', text='', images=None, nlp_prediction=None, image_prediction=None, date=None):
+    def __init__(self, post_id='', text='', images=None, nlp_prediction=None, image_prediction=None, date=None,upload_stamp=None):
         self.post_id = post_id
         self.text = text
         self.images = images if images is not None else []
         self.nlp_prediction = nlp_prediction
         self.image_prediction = image_prediction
         self.date = date if date is not None else datetime.utcnow()  # Set the current date by default
+        self.upload_stamp=upload_stamp
 
     def to_dict(self):
         return {
@@ -31,7 +37,8 @@ class PostData:
             "images": self.images,
             "nlp_prediction": self.nlp_prediction,
             "image_prediction": self.image_prediction,
-            "date": self.date
+            "date": self.date,
+            "upload_stamp":self.upload_stamp
         }
 
 class Predictor:
@@ -51,6 +58,9 @@ class Predictor:
         self.fs = gridfs.GridFS(self.db)   # GridFS for image retrieval
         self.prediction = self.db[Config.PREDICTIONS_NAME]
 
+        self.lemmatizer = WordNetLemmatizer()
+
+
 
     def load_nlp_model(self, model_path):
         with open(model_path, 'rb') as model_file:
@@ -65,8 +75,10 @@ class Predictor:
 
     def retrieve_posts_from_mongo(self):
         # Retrieve all posts from MongoDB
-        posts = list(self.collection.find())
-        return [PostData(post_id=str(post['post_id']), text=post['text'], images=post.get('images', [])) for post in posts]
+        latest_stamp = self.collection.find_one(sort=[("upload_stamp", -1)])["upload_stamp"]
+        print(latest_stamp)
+        posts_with_latest_stamp = self.collection.find({"upload_stamp": latest_stamp})
+        return [PostData(post_id=str(post['post_id']), text=post['text'], images=post.get('images', []),upload_stamp=post.get('upload_stamp')) for post in posts_with_latest_stamp]
 
     def fetch_image_by_id(self, image_id):
         try:
@@ -83,10 +95,9 @@ class Predictor:
 
     def preprocess_image(self, img):
         try:
-            # Assuming your model expects 150x150 pixel images; adjust based on your model's input size
-            img = img.resize((150, 150))
+            img = img.resize((150, 150)) #Adjust the image size
             img = np.array(img) / 255.0  # Normalize the image
-            if img.shape[-1] == 4:  # If image has alpha channel, convert to 3 channels (RGB)
+            if img.shape[-1] == 4:  # If image has alpha channel (RGBA), convert to 3 channels (RGB)
                 img = img[..., :3]
             if img.shape != (150, 150, 3):
                 print(f"Skipping image due to incorrect shape: {img.shape}")
@@ -96,50 +107,73 @@ class Predictor:
             print(f"Error processing image: {e}")
             return None
 
-    def predict_image(self, image_ids):
+    def predict_image(self, img):
         try:
-            image_predictions = []
-            for image_id in image_ids:
-                img = self.fetch_image_by_id(image_id)
-                if img is not None:
-                    preprocessed_img = self.preprocess_image(img)
-                    if preprocessed_img is not None:
-                        # Get the prediction as a NumPy array
-                        pred = self.image_model.predict(preprocessed_img).tolist()[0]  # Convert to list
-                        
-                        # Get the predicted class (index of the highest probability)
-                        predicted_class_index = int(np.argmax(pred))  # Convert to int
-                        
-                        # Get the class label from the classes dictionary
-                        predicted_class_label = self.classes.get(predicted_class_index, "UNKNOWN")
-                        
-                        image_predictions.append({
-                            "probabilities": [float(prob) for prob in pred],  # Convert probabilities to float
-                            "predicted_class_index": predicted_class_index,
-                            "predicted_class_label": predicted_class_label  # Add the label
-                        })
-                    else:
-                        image_predictions.append({
-                            "probabilities": [-1.0],  # Use float for consistency
-                            "predicted_class_index": -1,
-                            "predicted_class_label": "NONE"  # Assign label for no image case
-                        })
+            image_prediction = {}
+            if img is not None:
+                preprocessed_img = self.preprocess_image(img)
+                if preprocessed_img is not None:
+                    # Get the prediction as a NumPy array
+                    pred = self.image_model.predict(preprocessed_img).tolist()[0]  # Convert to list
+                    
+                    # Get the predicted class (index of the highest probability)
+                    predicted_class_index = int(np.argmax(pred))  # Convert to int
+                    
+                    # Get the class label from the classes dictionary
+                    predicted_class_label = self.classes.get(predicted_class_index, "UNKNOWN")
+
+                    probabilities_dict = {Config.CLASSES[i]: float(prob) for i, prob in enumerate(pred)}# Convert probabilities to float
+
+                    
+                    image_prediction={
+                       "probabilities": probabilities_dict,  
+                        "predicted_class_index": predicted_class_index,
+                        "predicted_class_label": predicted_class_label  # Add the label
+                    }
                 else:
-                    image_predictions.append({
-                        "probabilities": [-1.0],  # Use float for consistency
+                    image_prediction={
+                        "probabilities": {'UNKNOWN':-1.0},  # Use float for consistency
                         "predicted_class_index": -1,
-                        "predicted_class_label": "NONE"  # Assign label for missing image case
-                    })
-            return image_predictions
+                        "predicted_class_label": "NONE"  # Assign label for no image case
+                    }
+            else:
+                image_prediction={
+                    "probabilities": [{'UNKNOWN':-1.0}],  # Use float for consistency
+                    "predicted_class_index": -1,
+                    "predicted_class_label": "NONE"  # Assign label for missing image case
+                }
+            return image_prediction
         except Exception as e:
             print(str(e))
             return []
-        
+
+    def preprocess_text(self,text):
+        #Remove URLs
+        text = re.sub(r"http\S+|www\S+|https\S+", '', text, flags=re.MULTILINE)
+        #Remove special characters, punctuation, and numbers
+        text = re.sub(r'[^A-Za-z\s]', '', text)
+        #Convert text to lowercase
+        text = text.lower()
+        #Remove stopwords
+        stop_words = set(stopwords.words('english')) 
+        pronouns_to_keep={'he', 'she', 'they','our', 'it', 'i' 'we', 'you', 'him', 'her', 'them', 'us', 'me'}
+        #Remove pronouns from stop words
+        stop_words -= pronouns_to_keep
+        text_tokens = text.split()  # Tokenize text
+        text_tokens = [word for word in text_tokens if word not in stop_words]
+        #Lemmatization (convert words to base form)
+        text_tokens = [self.lemmatizer.lemmatize(word) for word in text_tokens]
+        #Join tokens back into a single string
+        cleaned_text = ' '.join(text_tokens)
+        return cleaned_text
 
     def predict_nlp(self, new_texts):
+        new_texts=[self.preprocess_text(new_texts[0])]
         new_text_tfidf = self.nlp_vectorizer.transform(new_texts)
         predictions = list(self.nlp_model.predict(new_text_tfidf))
-        return predictions
+        labeled_predictions = [Config.NLP_DICT[pred] for pred in predictions]
+
+        return labeled_predictions
 
     def run_predictions_on_scraped_data(self):
         # Retrieve posts from MongoDB
@@ -148,17 +182,19 @@ class Predictor:
         # Process each post individually
         for post in posts:
             # Make NLP prediction
-            nlp_prediction = int(self.predict_nlp([post.text])[0])  # Assuming the model outputs an array
+            nlp_prediction = self.predict_nlp([post.text])  # Assuming the model outputs an array
 
             # Make image prediction (if there are images)
-            image_prediction = None
+            image_predictions = []
             if post.images:  # Assuming images contains ObjectId(s) of the images in MongoDB
                 image_ids = [image_id for image_id in post.images]
-                image_prediction = self.predict_image(image_ids)
+                for ids in image_ids:
+                    img = self.fetch_image_by_id(ids)
+                    image_predictions.append(self.predict_image(img))
 
             # Update post with predictions
             post.nlp_prediction = nlp_prediction
-            post.image_prediction = image_prediction if image_prediction else "No Image"
+            post.image_prediction = image_predictions if image_predictions else "No Image"
 
         return [post.to_dict() for post in posts]
     
@@ -192,7 +228,10 @@ class Downloaded:
 
         try:
             # Querying the collection for posts where 'nlp_prediction' equals the given value
-            query = {"nlp_prediction": prediction_value}
+            latest_stamp = self.collection.find_one(sort=[("upload_stamp", -1)])["upload_stamp"]
+
+            query = {"upload_stamp":latest_stamp,
+                     "nlp_prediction": ['Disaster']}
             
             posts = self.collection.find(filter=query)
             

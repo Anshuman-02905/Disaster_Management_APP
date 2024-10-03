@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disaster Management</title>
+    <style>
+        #predictions {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 20px;
+            white-space: pre-wrap; /* Preserve whitespace for JSON formatting */
+        }
+    </style>
+    <script>
+        function startScraper() {
+            const disasterType = document.getElementById('disasterType').value.trim();
+            const searchQuery = disasterType ? `%23${disasterType}` : '%23disaster'; // Add hashtag automatically
+
+            fetch('/start_scraper', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({search_query: searchQuery, max_posts: 50})
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    return response.text().then(text => { throw new Error(text) });
+                }
+            })
+            .then(data => {
+                // You can also display the success message somewhere on the page
+                console.log(data.message);
+            })
+            .catch(error => console.error("Error:", error));
+        }
+
+        function show_prediction() {
+            fetch('/show_prediction', {
+                method: 'POST',
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    return response.text().then(text => { throw new Error(text) });
+                }
+            })
+            .then(data => {
+                // Display predictions in the designated area
+                document.getElementById('predictions').textContent = JSON.stringify(data.predictions, null, 2);
+            })
+            .catch(error => console.error("Error:", error));
+        }
+    </script>
+</head>
+<body>
+    <h1>Disaster Management</h1>
+    <label for="disasterType">Enter Disaster Type:</label>
+    <input type="text" id="disasterType" placeholder="e.g., earthquake, flood" />
+    <button onclick="startScraper()">Start Scraper</button>
+    <button onclick="show_prediction()">Show Prediction</button>
+    
+    <h2>Predictions</h2>
+    <div id="predictions"></div> <!-- Area to display predictions -->
+</body>
+</html>
