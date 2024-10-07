@@ -1,6 +1,6 @@
 # Disaster Detection and Classification Application
 
-![Disaster Management](Documents/images/your_image_filename.jpg)
+![Disaster Management](Documents/images/img.PNG)
 
 ## Objective
 To create a disaster image and text classification application with a web interface and database, allowing users to manually upload images or tweets for classification and access live classification via a scraper.
