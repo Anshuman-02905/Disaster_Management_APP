@@ -2,6 +2,10 @@
 
 ![Disaster Management](Documents/images/img.PNG)
 
+### Reports
+- [Image Classification Report](https://drive.google.com/file/d/1TGd8R43RH9Q1n3T71AAuTLmsipexzEWs/view?usp=sharing)
+- [Text Classification Report](https://drive.google.com/file/d/1QoapI8t0kC82_JfIL05QQSJ6zIRr_0Jn/view?usp=sharing)
+- [Full Report](https://drive.google.com/file/d/10m6SQgzlu_D4XGBBvJoG5ugpc_4r0lxQ/view?usp=sharing)
 ## Objective
 To create a disaster image and text classification application with a web interface and database, allowing users to manually upload images or tweets for classification and access live classification via a scraper.
 
