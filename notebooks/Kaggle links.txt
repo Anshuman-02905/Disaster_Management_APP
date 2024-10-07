@@ -1,0 +1,2 @@
+Image:https://www.kaggle.com/code/anshuman02905/diasaster-clasification/notebook
+Text: https://kaggle.com/code/anshuman02905/nlp-disaster/notebook
