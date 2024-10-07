@@ -19,6 +19,9 @@ To create a disaster image and text classification application with a web interf
 ## Project Overview
 This project aims to develop an efficient disaster detection system using image and text classification models and a real-time Twitter scraper. It integrates deep learning techniques for image classification, NLP methods for text classification, and a web-based interface for live disaster monitoring.
 
+## Project Demo
+Watch the demo video of the project here: [Demo Video](https://drive.google.com/file/d/1ILRuGV5wTZ7vKF1HfmcsBr_hfPbpb48t/view?usp=sharing)
+
 ### Key Objectives
 - Develop a deep learning-based image classification model for disaster detection.
 - Implement NLP techniques for classifying disaster-related tweets.
@@ -58,6 +61,7 @@ This project aims to develop an efficient disaster detection system using image 
 - **Logistic Regression:** Accuracy: 0.84 | Precision: 0.84 | Recall: 0.53 | F1-Score: 0.65
 - **Random Forest:** Accuracy: 0.83 | Precision: 0.78 | Recall: 0.56 | F1-Score: 0.65
 - **XGBoost:** Accuracy: 0.82 | Precision: 0.79 | Recall: 0.57 | F1-Score: 0.66
+
 
 ## Future Directions
 Implement data augmentation, explore class weighting, and analyze misclassifications to improve accuracy across all classes.
